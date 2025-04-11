@@ -3,15 +3,15 @@ Tiny Web - pretty simple and powerful web server for tiny platforms like ESP8266
 MIT license
 (C) Konstantin Belyalov 2017-2018
 """
-import logging
 import asyncio
-import ujson as json
 import gc
-import uos as os
+import logging
 import sys
-import uerrno as errno
-import usocket as socket
 
+import uerrno as errno
+import ujson as json
+import uos as os
+import usocket as socket
 
 log = logging.getLogger('WEB')
 
@@ -385,6 +385,7 @@ class webserver:
                               to client together with HTTP 500 or not.
         """
         self.loop = asyncio.get_event_loop()
+        self._server_task = None
         self.request_timeout = request_timeout
         self.max_concurrency = max_concurrency
         self.backlog = backlog
@@ -394,6 +395,7 @@ class webserver:
         self.parameterized_url_map = {}
         # Currently opened connections
         self.conns = {}
+        self.conns_tasks = {}
         # Statistics
         self.processed_connections = 0
 
@@ -501,6 +503,7 @@ class webserver:
                 self.loop.create_task(self._server_coro)
             # Delete connection, using socket as a key
             del self.conns[id(writer.s)]
+            del self.conns_tasks[id(writer.s)]
 
     def add_route(self, url, f, **kwargs):
         """Add URL to function mapping.
@@ -659,7 +662,7 @@ class webserver:
                 handler = self._handler(asyncio.StreamReader(csock),
                                         asyncio.StreamWriter(csock, {}))
                 self.conns[hid] = handler
-                self.loop.create_task(handler)
+                self.conns_tasks[hid] = self.loop.create_task(handler)
                 # In case of max concurrency reached - temporary pause server:
                 # 1. backlog must be greater than max_concurrency, otherwise
                 #    client will got "Connection Reset"
@@ -681,12 +684,16 @@ class webserver:
             loop_forever - run loo.loop_forever(), otherwise caller must run it by itself.
         """
         self._server_coro = self._tcp_server(host, port, self.backlog)
-        self.loop.create_task(self._server_coro)
+        self._server_task = self.loop.create_task(self._server_coro)
         if loop_forever:
             self.loop.run_forever()
 
     def shutdown(self):
         """Gracefully shutdown Web Server"""
-        asyncio.cancel(self._server_coro)
-        for hid, coro in self.conns.items():
-            asyncio.cancel(coro)
+        if None != self._server_task:
+            self._server_task.cancel()
+        for task in self.conns_tasks.values():
+            try:
+                task.cancel()
+            except RuntimeError:
+                print("Failed to cancel a server task, cleanup may be required")
