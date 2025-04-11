@@ -515,7 +515,7 @@ class webserver:
         Keyword arguments:
             methods - list of allowed methods. Defaults to ['GET', 'POST']
             save_headers - contains list of HTTP headers to be saved. Case sensitive. Default - empty.
-            max_body_size - Max HTTP body size (e.g. POST form data). Defaults to 1024
+            max_body_size - Max HTTP body size (e.g. POST form data). Defaults to 4098
             allowed_access_control_headers - Default value for the same name header. Defaults to *
             allowed_access_control_origins - Default value for the same name header. Defaults to *
         """
@@ -524,7 +524,7 @@ class webserver:
         # Initial params for route
         params = {'methods': ['GET'],
                   'save_headers': [],
-                  'max_body_size': 1024,
+                  'max_body_size': 4098,
                   'allowed_access_control_headers': '*',
                   'allowed_access_control_origins': '*',
                   }
@@ -576,6 +576,7 @@ class webserver:
             fn = m.lower()
             if hasattr(obj, fn):
                 methods.append(m)
+                print(m)
                 callmap[m.encode()] = (getattr(obj, fn), kwargs)
         self.add_route(url, restful_resource_handler,
                        methods=methods,
@@ -592,7 +593,7 @@ class webserver:
                 await response.start_html()
                 await response.send('<html><body><h1>My custom 404!</h1></html>\n')
         """
-        params = {'methods': [b'GET'], 'save_headers': [], 'max_body_size': 1024, 'allowed_access_control_headers': '*', 'allowed_access_control_origins': '*'}
+        params = {'methods': [b'GET'], 'save_headers': [], 'max_body_size': 4098, 'allowed_access_control_headers': '*', 'allowed_access_control_origins': '*'}
 
         def _route(f):
             self.catch_all_handler = (f, params)
