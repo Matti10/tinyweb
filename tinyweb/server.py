@@ -12,6 +12,7 @@ import uerrno as errno
 import ujson as json
 import uos as os
 import usocket as socket
+import re
 
 log = logging.getLogger('WEB')
 
@@ -150,6 +151,40 @@ class request:
                 return json.loads(data)
             elif ct == b'application/x-www-form-urlencoded':
                 return parse_query_string(data.decode())
+            elif ct == b'multipart/form-data':
+                # Extract boundary from Content-Type
+                boundary_match = re.search(b'boundary=(.+)', self.headers[b'Content-Type'])
+                if not boundary_match:
+                    raise HTTPException(400)  # Bad Request: Missing boundary
+                boundary = b'--' + boundary_match.group(1)
+
+                # Parse multipart data
+                parts = data.split(boundary)
+                parsed_data = {}
+                for part in parts:
+                    if not part or part == b'--\r\n':
+                        continue
+                    headers, body = part.split(b'\r\n\r\n', 1)
+                    headers = headers.decode().split('\r\n')
+                    disposition = [h for h in headers if h.startswith('Content-Disposition')]
+                    if not disposition:
+                        continue
+                    disposition = disposition[0]
+                    name_match = re.search(r'name="([^"]+)"', disposition)
+                    filename_match = re.search(r'filename="([^"]+)"', disposition)
+
+                    if name_match:
+                        name = name_match.group(1)
+                        if filename_match:
+                            # Handle file upload
+                            filename = filename_match.group(1)
+                            parsed_data[name] = {
+                                'filename': filename,
+                                'content': body.strip(b'\r\n'),
+                            }
+                        else:
+                            # Handle regular form field
+                            parsed_data[name] = body.strip(b'\r\n').decode()
         except ValueError:
             # Re-generate exception for malformed form data
             raise HTTPException(400)
@@ -457,7 +492,8 @@ class webserver:
                 resp.add_header('Content-Length', '0')
                 await resp._send_headers()
                 return
-
+            print(req.method)
+            print(req.params)
             # Ensure that HTTP method is allowed for this path
             if req.method not in req.params['methods']:
                 raise HTTPException(405)
@@ -576,7 +612,6 @@ class webserver:
             fn = m.lower()
             if hasattr(obj, fn):
                 methods.append(m)
-                print(m)
                 callmap[m.encode()] = (getattr(obj, fn), kwargs)
         self.add_route(url, restful_resource_handler,
                        methods=methods,
