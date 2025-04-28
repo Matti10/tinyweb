@@ -492,8 +492,6 @@ class webserver:
                 resp.add_header('Content-Length', '0')
                 await resp._send_headers()
                 return
-            print(req.method)
-            print(req.params)
             # Ensure that HTTP method is allowed for this path
             if req.method not in req.params['methods']:
                 raise HTTPException(405)
